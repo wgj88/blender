@@ -105,8 +105,11 @@ jobs:
           echo "NDK=$ANDROID_NDK_ROOT"
           du -sh .
 
-      - name: Update Blender dependencies
-        run: python3 ./build_files/utils/make_update.py --no-lfs-fallback --no-blender
+      - name: Update Blender source metadata without blocked submodule clone
+        run: python3 ./build_files/utils/make_update.py --no-lfs-fallback --no-blender --no-libraries
+
+      - name: Fetch precompiled libraries through archive and LFS APIs
+        run: python3 .github/scripts/fetch-blender-libraries.py
 
       - name: Install Vulkan-Headers matching Blender dependencies
         run: |
