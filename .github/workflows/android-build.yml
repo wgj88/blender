@@ -77,8 +77,18 @@ jobs:
 
       - name: Install pinned Android NDK
         run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager "ndk;${ANDROID_NDK_VERSION}" "platform-tools"
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools"
+          ARCHIVE="$RUNNER_TEMP/android-ndk-r30-beta1-linux.zip"
+          curl --fail --location --retry 5 --retry-all-errors \
+            "https://dl.google.com/android/repository/android-ndk-r30-beta1-linux.zip" \
+            --output "$ARCHIVE"
+          echo '26b746e5a1e7ac3371f2a862a2f52a7c0740aa8a  '"$ARCHIVE" | sha1sum --check -
+          mkdir -p "$ANDROID_HOME/ndk"
+          unzip -q "$ARCHIVE" -d "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/android-ndk-r30" "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          grep -F "Pkg.Revision = ${ANDROID_NDK_VERSION}" "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}/source.properties"
           echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
           test -f "${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake"
 
