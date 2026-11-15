@@ -115,6 +115,17 @@ jobs:
           grep -q 'VkPhysicalDeviceLineRasterizationFeaturesKHR' "$VULKAN_INCLUDE/vulkan/vulkan_core.h"
           test -f "$VULKAN_INCLUDE/vk_video/vulkan_video_codec_av1std.h"
 
+      - name: Restore exact startup.blend LFS object
+        run: |
+          set -euxo pipefail
+          STARTUP="release/datafiles/startup.blend"
+          mkdir -p "$(dirname "$STARTUP")"
+          curl --fail --location --retry 3 \
+            "https://projects.blender.org/blender/blender.git/info/lfs/objects/1335899143c7e77bcb0f6e3680fd99078c0af481a1238e4ed7d4eb1ddd7dd353" \
+            --output "$STARTUP"
+          test "$(stat -c%s "$STARTUP")" -eq 121384
+          echo '1335899143c7e77bcb0f6e3680fd99078c0af481a1238e4ed7d4eb1ddd7dd353  '"$STARTUP" | sha256sum --check -
+
       - name: Configure Android release build
         run: make android arm64 release ninja ccache
 
