@@ -7,6 +7,8 @@ import io
 import os
 import re
 import stat
+import subprocess
+import time
 import zipfile
 from pathlib import Path
 
@@ -25,9 +27,34 @@ WORKERS = 10
 def fetch_archive(repo, commit, destination):
     url = f"https://projects.blender.org/api/v1/repos/blender/{repo}/archive/{commit}.zip"
     print(f"Downloading source archive: {repo}@{commit}", flush=True)
-    response = SESSION.get(url, timeout=(30, 300))
-    response.raise_for_status()
-    archive = zipfile.ZipFile(io.BytesIO(response.content))
+    response = None
+    last_error = None
+    for attempt in range(1, 6):
+        try:
+            response = SESSION.get(url, timeout=(30, 300))
+            response.raise_for_status()
+            break
+        except requests.RequestException as error:
+            last_error = error
+            status = getattr(getattr(error, "response", None), "status_code", None)
+            print(f"Archive request attempt {attempt}/5 failed (HTTP {status}): {error}", flush=True)
+            if attempt < 5:
+                time.sleep(min(30, attempt * 5))
+    if response is None or not response.ok:
+        # Cloudflare may intermittently reject Python requests from hosted runners;
+        # retry through curl's independent HTTP stack before giving up.
+        archive_path = destination.parent / f".{repo}-{commit}.zip"
+        command = ["curl", "--fail", "--location", "--retry", "5",
+                   "--retry-all-errors", "--retry-delay", "5",
+                   "--connect-timeout", "30", "--max-time", "600",
+                   "--user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36",
+                   url, "--output", str(archive_path)]
+        subprocess.run(command, check=True)
+        archive_bytes = archive_path.read_bytes()
+        archive_path.unlink()
+    else:
+        archive_bytes = response.content
+    archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
     members = archive.namelist()
     prefix = members[0].split("/", 1)[0] + "/"
     destination.mkdir(parents=True, exist_ok=True)
