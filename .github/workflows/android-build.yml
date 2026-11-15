@@ -30,6 +30,7 @@ jobs:
       GIT_LFS_SKIP_SMUDGE: '1'
       ANDROID_NDK_VERSION: '28.2.13676358'
       NPROCS: '2'
+      CCACHE_DIR: ~/.cache/ccache
       CC: gcc-14
       CXX: g++-14
 
@@ -126,11 +127,30 @@ jobs:
           test "$(stat -c%s "$STARTUP")" -eq 121384
           echo '1335899143c7e77bcb0f6e3680fd99078c0af481a1238e4ed7d4eb1ddd7dd353  '"$STARTUP" | sha256sum --check -
 
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-blender-android-ndk-${{ env.ANDROID_NDK_VERSION }}-ccache-v1-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-blender-android-ndk-${{ env.ANDROID_NDK_VERSION }}-ccache-v1-
+
+      - name: Configure compiler cache
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          ccache --set-config=max_size=8G
+          ccache --show-config
+          ccache --show-stats
+
       - name: Configure Android release build
         run: make android arm64 release ninja ccache
 
       - name: Build and assemble APK
         run: ninja -C ../build_android_release -j2 gradle_assemble
+
+      - name: Report compiler cache statistics
+        if: always()
+        run: ccache --show-stats || true
 
       - name: Verify APK and ABI
         run: |
