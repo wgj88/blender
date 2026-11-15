@@ -109,10 +109,11 @@ jobs:
           tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP"
           VULKAN_INCLUDE="$GITHUB_WORKSPACE/lib/android_arm64/vulkan/include"
           mkdir -p "$VULKAN_INCLUDE"
-          rm -rf "$VULKAN_INCLUDE/vulkan"
-          cp -a "$RUNNER_TEMP/Vulkan-Headers-${VERSION}/include/vulkan" "$VULKAN_INCLUDE/"
+          rm -rf "$VULKAN_INCLUDE/vulkan" "$VULKAN_INCLUDE/vk_video"
+          cp -a "$RUNNER_TEMP/Vulkan-Headers-${VERSION}/include/." "$VULKAN_INCLUDE/"
           grep -q 'VK_KHR_dynamic_rendering_local_read' "$VULKAN_INCLUDE/vulkan/vulkan_core.h"
           grep -q 'VkPhysicalDeviceLineRasterizationFeaturesKHR' "$VULKAN_INCLUDE/vulkan/vulkan_core.h"
+          test -f "$VULKAN_INCLUDE/vk_video/vulkan_video_codec_av1std.h"
 
       - name: Configure Android release build
         run: make android arm64 release ninja ccache
