@@ -97,6 +97,23 @@ jobs:
       - name: Update Blender dependencies
         run: make update
 
+      - name: Install Vulkan-Headers matching Blender dependencies
+        run: |
+          set -euxo pipefail
+          VERSION=1.4.341
+          ARCHIVE="$RUNNER_TEMP/Vulkan-Headers-${VERSION}.tar.gz"
+          curl --fail --location --retry 3 \
+            "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v${VERSION}.tar.gz" \
+            --output "$ARCHIVE"
+          echo '57f17871ef2c43fc9ac01708a4bd3c82  '"$ARCHIVE" | md5sum --check -
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP"
+          VULKAN_INCLUDE="$GITHUB_WORKSPACE/lib/android_arm64/vulkan/include"
+          mkdir -p "$VULKAN_INCLUDE"
+          rm -rf "$VULKAN_INCLUDE/vulkan"
+          cp -a "$RUNNER_TEMP/Vulkan-Headers-${VERSION}/include/vulkan" "$VULKAN_INCLUDE/"
+          grep -q 'VK_KHR_dynamic_rendering_local_read' "$VULKAN_INCLUDE/vulkan/vulkan_core.h"
+          grep -q 'VkPhysicalDeviceLineRasterizationFeaturesKHR' "$VULKAN_INCLUDE/vulkan/vulkan_core.h"
+
       - name: Configure Android release build
         run: make android arm64 release ninja ccache
 
