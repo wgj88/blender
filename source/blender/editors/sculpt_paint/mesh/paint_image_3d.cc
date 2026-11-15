@@ -47,7 +47,8 @@
 #include "sculpt_automask.hh"
 #include "sculpt_intern.hh"
 
-#include <atomic>
+#include "atomic_ops.h"
+
 
 namespace blender {
 
@@ -438,9 +439,8 @@ static void push_undo_tiles(ImageData &image_data,
 
   for (int tile_x = tile_x_start; tile_x <= tile_x_end; tile_x++) {
     const int tile_index = tile_y * undo_tiles_x + tile_x;
-    std::atomic_ref<uint32_t> pushed(tile_pushed[tile_index]);
-    /* This atomic load is free on x86_64, and cheap on arm64. */
-    if (pushed.load(std::memory_order_acquire)) {
+    /* Use Blender's cross-platform atomic primitives. */
+    if (atomic_load_uint32(&tile_pushed[tile_index])) {
       continue;
     }
     ImageUser tile_user = image_data.image_user_get();
@@ -448,7 +448,7 @@ static void push_undo_tiles(ImageData &image_data,
     PaintTileMap *undo_tiles = ED_image_paint_tile_map_get();
     ED_image_paint_tile_push(
         undo_tiles, image_data.image, &image_buffer, &tile_user, tile_x, tile_y, nullptr, nullptr);
-    pushed.store(1, std::memory_order_release);
+    atomic_store_uint32(&tile_pushed[tile_index], 1);
   }
 }
 
