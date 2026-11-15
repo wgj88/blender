@@ -1,13 +1,18 @@
 name: Blender Android APK
 
 on:
+  push:
+    branches: [android-nx709s]
+    paths:
+      - '.github/workflows/android-build.yml'
+      - 'build_files/**'
+      - 'release/android/**'
+      - 'source/**'
+      - 'intern/**'
+      - 'extern/**'
+      - 'GNUmakefile'
+      - '.gitmodules'
   workflow_dispatch:
-    inputs:
-      clean_build:
-        description: 'Force a clean dependency/build setup'
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
