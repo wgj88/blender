@@ -95,7 +95,7 @@ jobs:
           du -sh .
 
       - name: Update Blender dependencies
-        run: make update
+        run: make update --no-lfs-fallback
 
       - name: Install Vulkan-Headers matching Blender dependencies
         run: |
