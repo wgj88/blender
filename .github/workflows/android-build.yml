@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 360
     env:
       GIT_LFS_SKIP_SMUDGE: '1'
-      ANDROID_NDK_VERSION: '28.2.13676358'
+      ANDROID_NDK_VERSION: '30.0.14904198-beta1'
       NPROCS: '2'
       CCACHE_DIR: ~/.cache/ccache
       CC: gcc-14
