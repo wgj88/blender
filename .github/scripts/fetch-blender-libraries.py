@@ -6,6 +6,7 @@ import hashlib
 import io
 import os
 import re
+import stat
 import zipfile
 from pathlib import Path
 
@@ -39,13 +40,20 @@ def fetch_archive(repo, commit, destination):
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         info = archive.getinfo(member)
+        mode_bits = (info.external_attr >> 16) & 0xffff
+        if stat.S_ISLNK(mode_bits):
+            link_target = archive.read(member).decode("utf-8")
+            if target.exists() or target.is_symlink():
+                target.unlink()
+            target.symlink_to(link_target)
+            continue
         with archive.open(member) as src, target.open("wb") as dst:
             while True:
                 chunk = src.read(1024 * 1024)
                 if not chunk:
                     break
                 dst.write(chunk)
-        mode = (info.external_attr >> 16) & 0o777
+        mode = mode_bits & 0o777
         if mode:
             target.chmod(mode)
     print(f"Extracted {len(members)} archive entries into {destination}", flush=True)
@@ -54,7 +62,7 @@ def fetch_archive(repo, commit, destination):
 def lfs_objects(destination):
     objects = []
     for path in destination.rglob("*"):
-        if not path.is_file():
+        if path.is_symlink() or not path.is_file():
             continue
         try:
             if path.stat().st_size > 1024:
