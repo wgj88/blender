@@ -95,7 +95,7 @@ jobs:
           du -sh .
 
       - name: Update Blender dependencies
-        run: python3 ./build_files/utils/make_update.py --no-lfs-fallback
+        run: python3 ./build_files/utils/make_update.py --no-lfs-fallback --no-blender
 
       - name: Install Vulkan-Headers matching Blender dependencies
         run: |
