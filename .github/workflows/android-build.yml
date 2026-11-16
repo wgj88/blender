@@ -160,9 +160,17 @@ jobs:
 
       - name: Hydrate Gradle wrapper jar from LFS
         run: |
-          env -u GIT_LFS_SKIP_SMUDGE git lfs pull --include "release/android/gradle/wrapper/gradle-wrapper.jar"
-          test -s release/android/gradle/wrapper/gradle-wrapper.jar
-          head -c 2 release/android/gradle/wrapper/gradle-wrapper.jar | grep -q PK
+          jar=release/android/gradle/wrapper/gradle-wrapper.jar
+          oid=$(sed -n 's/^oid sha256://p' "$jar")
+          size=$(sed -n 's/^size //p' "$jar")
+          test -n "$oid"
+          href=$(curl -fsSL -X POST "https://projects.blender.org/blender/blender.git/info/lfs/objects/batch" \
+            -H "Accept: application/vnd.git-lfs+json" -H "Content-Type: application/vnd.git-lfs+json" \
+            -d "{\"operation\":\"download\",\"transfers\":[\"basic\"],\"objects\":[{\"oid\":\"$oid\",\"size\":$size}]}" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['objects'][0]['actions']['download']['href'])")
+          curl -fsSL "$href" -o "$jar"
+          echo "$oid  $jar" | sha256sum -c
+          head -c 2 "$jar" | grep -q PK
 
       - name: Build and assemble APK
         run: ninja -C ../build_android_arm64_release -j2 gradle_assemble
