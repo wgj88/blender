@@ -1,0 +1,185 @@
+name: Blender Android APK  # retrigger after exec-bit fix
+
+on:
+  push:
+    branches: [android-nx709s]
+    paths:
+      - '.github/workflows/android-build.yml'
+      - 'build_files/**'
+      - 'release/android/**'
+      - 'source/**'
+      - 'intern/**'
+      - 'extern/**'
+      - 'GNUmakefile'
+      - '.gitmodules'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blender-android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-arm64:
+    name: Build official Android arm64-v8a APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GIT_LFS_SKIP_SMUDGE: '1'
+      ANDROID_NDK_VERSION: '30.0.14904198-beta1'
+      NPROCS: '2'
+      CCACHE_DIR: ~/.cache/ccache
+      CC: gcc-14
+      CXX: g++-14
+
+    steps:
+      - name: Free runner disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Checkout Android source branch
+        uses: actions/checkout@v4
+        with:
+          ref: android-nx709s
+          fetch-depth: 1
+          lfs: false
+          submodules: false
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build git-lfs subversion ccache python3 python3-requests yasm pkg-config gcc-14 g++-14
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Prepare writable Android SDK directory
+        run: |
+          sudo mkdir -p /usr/local/lib/android
+          sudo chown -R "$USER":"$USER" /usr/local/lib/android
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install pinned Android NDK
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools"
+          ARCHIVE="$RUNNER_TEMP/android-ndk-r30-beta1-linux.zip"
+          curl --fail --location --retry 5 --retry-all-errors \
+            "https://dl.google.com/android/repository/android-ndk-r30-beta1-linux.zip" \
+            --output "$ARCHIVE"
+          echo '26b746e5a1e7ac3371f2a862a2f52a7c0740aa8a  '"$ARCHIVE" | sha1sum --check -
+          mkdir -p "$ANDROID_HOME/ndk"
+          unzip -q "$ARCHIVE" -d "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/android-ndk-r30-beta1" "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          grep -F "Pkg.Revision = ${ANDROID_NDK_VERSION}" "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}/source.properties"
+          echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+          test -f "${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake"
+
+      - name: Report build environment
+        run: |
+          df -h
+          free -h
+          git --version
+          cmake --version
+          gcc-14 --version
+          g++-14 --version
+          ninja --version
+          java -version
+          echo "NDK=$ANDROID_NDK_ROOT"
+          du -sh .
+
+      - name: Update Blender source metadata without blocked submodule clone
+        run: python3 ./build_files/utils/make_update.py --no-lfs-fallback --no-blender --no-libraries
+
+      - name: Fetch precompiled libraries through archive and LFS APIs
+        run: python3 .github/scripts/fetch-blender-libraries.py
+
+      - name: Install Vulkan-Headers matching Blender dependencies
+        run: |
+          set -euxo pipefail
+          VERSION=1.4.341
+          ARCHIVE="$RUNNER_TEMP/Vulkan-Headers-${VERSION}.tar.gz"
+          curl --fail --location --retry 3 \
+            "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v${VERSION}.tar.gz" \
+            --output "$ARCHIVE"
+          echo '57f17871ef2c43fc9ac01708a4bd3c82  '"$ARCHIVE" | md5sum --check -
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP"
+          VULKAN_INCLUDE="$GITHUB_WORKSPACE/lib/android_arm64/vulkan/include"
+          mkdir -p "$VULKAN_INCLUDE"
+          rm -rf "$VULKAN_INCLUDE/vulkan" "$VULKAN_INCLUDE/vk_video"
+          cp -a "$RUNNER_TEMP/Vulkan-Headers-${VERSION}/include/." "$VULKAN_INCLUDE/"
+          grep -q 'VK_KHR_dynamic_rendering_local_read' "$VULKAN_INCLUDE/vulkan/vulkan_core.h"
+          grep -q 'VkPhysicalDeviceLineRasterizationFeaturesKHR' "$VULKAN_INCLUDE/vulkan/vulkan_core.h"
+          test -f "$VULKAN_INCLUDE/vk_video/vulkan_video_codec_av1std.h"
+
+      - name: Restore exact startup.blend LFS object
+        run: |
+          set -euxo pipefail
+          STARTUP="release/datafiles/startup.blend"
+          mkdir -p "$(dirname "$STARTUP")"
+          curl --fail --location --retry 3 \
+            "https://projects.blender.org/blender/blender.git/info/lfs/objects/1335899143c7e77bcb0f6e3680fd99078c0af481a1238e4ed7d4eb1ddd7dd353" \
+            --output "$STARTUP"
+          test "$(stat -c%s "$STARTUP")" -eq 121384
+          echo '1335899143c7e77bcb0f6e3680fd99078c0af481a1238e4ed7d4eb1ddd7dd353  '"$STARTUP" | sha256sum --check -
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-blender-android-ndk-${{ env.ANDROID_NDK_VERSION }}-ccache-v1-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-blender-android-ndk-${{ env.ANDROID_NDK_VERSION }}-ccache-v1-
+
+      - name: Configure compiler cache
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          ccache --set-config=max_size=8G
+          ccache --show-config
+          ccache --show-stats
+
+      - name: Configure Android release build
+        run: make android arm64 release ninja ccache
+
+      - name: Build and assemble APK
+        run: ninja -C ../build_android_release -j2 gradle_assemble
+
+      - name: Report compiler cache statistics
+        if: always()
+        run: ccache --show-stats || true
+
+      - name: Verify APK and ABI
+        run: |
+          APK="../build_android_release/gradle/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          echo "APK_SIZE=$(du -h "$APK" | cut -f1)"
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*\.so$' | head -30
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
+          mkdir -p dist
+          cp "$APK" dist/blender-android-arm64-v8a-release.apk
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-android-arm64-v8a-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
