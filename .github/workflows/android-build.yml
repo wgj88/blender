@@ -158,6 +158,12 @@ jobs:
       - name: Configure Android release build
         run: make android arm64 release ninja ccache
 
+      - name: Hydrate Gradle wrapper jar from LFS
+        run: |
+          env -u GIT_LFS_SKIP_SMUDGE git lfs pull --include "release/android/gradle/wrapper/gradle-wrapper.jar"
+          test -s release/android/gradle/wrapper/gradle-wrapper.jar
+          head -c 2 release/android/gradle/wrapper/gradle-wrapper.jar | grep -q PK
+
       - name: Build and assemble APK
         run: ninja -C ../build_android_arm64_release -j2 gradle_assemble
 
