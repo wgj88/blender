@@ -1,4 +1,4 @@
-name: Blender Android APK
+name: Blender Android APK  # retrigger after exec-bit fix
 
 on:
   push:
