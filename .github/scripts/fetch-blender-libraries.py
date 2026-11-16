@@ -225,6 +225,17 @@ def main():
         fetch_archive(repo, commit, destination)
         hydrate(repo, destination)
 
+    # The source checkout itself is LFS-tracked (*.png, *.blend, *.exr, ...).
+    # The Gitea archive API leaves those as pointer files, and the fork's LFS
+    # storage has no objects, so hydrate the whole source tree from the
+    # canonical upstream LFS server.
+    source = ROOT
+    objects = lfs_objects(source)
+    if objects:
+        hydrate("blender", source)
+    else:
+        print("Source tree has no LFS pointer files", flush=True)
+
 
 if __name__ == "__main__":
     main()
