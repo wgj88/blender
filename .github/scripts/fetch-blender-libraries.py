@@ -83,6 +83,23 @@ def fetch_archive(repo, commit, destination):
         mode = mode_bits & 0o777
         if mode:
             target.chmod(mode)
+        else:
+            # Some archives carry no Unix mode; executables must stay runnable.
+            data = target.read_bytes()[:4]
+            if data == b"\x7fELF" or (data[:2] == b"#!"):
+                target.chmod(0o755)
+    # Directories are created implicitly via mkdir() under the runner umask;
+    # re-apply modes recorded for explicit directory entries.
+    for member in members:
+        if not member.endswith("/"):
+            continue
+        relative = member[len(prefix):]
+        if not relative:
+            continue
+        info = archive.getinfo(member)
+        mode = (info.external_attr >> 16) & 0o777
+        if mode:
+            (destination / relative).chmod(mode)
     print(f"Extracted {len(members)} archive entries into {destination}", flush=True)
 
 
@@ -150,6 +167,12 @@ def download_one(item):
             f"Integrity check failed for {path}: size={written}/{size}, "
             f"sha256={digest.hexdigest()}/{oid}"
         )
+    # Hydration replaces the pointer file; the temp file is created with the
+    # default umask, so preserve the pointer file's Unix mode (the ZIP/git
+    # entry mode, e.g. 0755 for executables) or executables become 0644.
+    mode = path.stat().st_mode & 0o777
+    if mode:
+        temporary.chmod(mode)
     temporary.replace(path)
     return written
 
@@ -175,6 +198,20 @@ def hydrate(repo, destination):
     remaining = lfs_objects(destination)
     if remaining:
         raise RuntimeError(f"{repo}: {len(remaining)} LFS pointer files remain")
+    # Self-check: hydrated LFS files must preserve the executable bit of the
+    # pointer file; catch any ELF/shebang file left non-executable.
+    for path in destination.rglob("*"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            if not os.access(path, os.X_OK) and path.read_bytes()[:4] in (
+                b"\x7fELF",
+                b"#!",
+            ):
+                print(f"Warning: fixing missing exec bit on {path}", flush=True)
+                path.chmod(0o755)
+        except OSError:
+            continue
     print(f"{repo}: LFS hydration complete", flush=True)
 
 
