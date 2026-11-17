@@ -1892,6 +1892,13 @@ ScrArea *ED_screen_state_toggle(bContext *C,
 ScrArea *ED_screen_temp_space_open(
     bContext *C, const char *title, eSpace_Type space_type, int display_type, bool dialog)
 {
+#ifdef __ANDROID__
+  /* Android opens temp space (Preferences, file browser) as a secondary SDL
+   * window, which needs a second Vulkan swapchain. Under driver layers this
+   * path fails and leaks memory until the system kills the app. Always open
+   * temp space fullscreen inside the existing window instead. */
+  display_type = USER_TEMP_SPACE_DISPLAY_FULLSCREEN;
+#endif
   switch (display_type) {
     case USER_TEMP_SPACE_DISPLAY_WINDOW:
       if (WM_window_open_temp(C, title, space_type, dialog)) {
