@@ -161,6 +161,10 @@ jobs:
       - name: Hydrate Gradle wrapper jar from LFS
         run: |
           jar=release/android/gradle/wrapper/gradle-wrapper.jar
+          if head -c 2 "$jar" | grep -q PK; then
+            echo "Wrapper jar already hydrated"
+            exit 0
+          fi
           oid=$(sed -n 's/^oid sha256://p' "$jar")
           size=$(sed -n 's/^size //p' "$jar")
           test -n "$oid"
